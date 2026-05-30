@@ -6,6 +6,7 @@ import type { getWeather } from "./ai/tools/get-weather";
 import type { requestSuggestions } from "./ai/tools/request-suggestions";
 import type { updateDocument } from "./ai/tools/update-document";
 import type { Suggestion } from "./db/schema";
+import type { DocumentSearchTool } from "./langgraph/tools/document-search";
 
 export const messageMetadataSchema = z.object({
   createdAt: z.string(),
@@ -19,12 +20,12 @@ type updateDocumentTool = InferUITool<ReturnType<typeof updateDocument>>;
 type requestSuggestionsTool = InferUITool<
   ReturnType<typeof requestSuggestions>
 >;
-
 export type ChatTools = {
   getWeather: weatherTool;
   createDocument: createDocumentTool;
   updateDocument: updateDocumentTool;
   requestSuggestions: requestSuggestionsTool;
+  document_search: DocumentSearchTool;
 };
 
 export type CustomUIDataTypes = {
