@@ -241,6 +241,7 @@ export async function saveMessages({ messages }: { messages: DBMessage[] }) {
   try {
     return await db.insert(message).values(messages);
   } catch (_error) {
+    console.error(_error);
     throw new ChatbotError("bad_request:database", "Failed to save messages");
   }
 }
