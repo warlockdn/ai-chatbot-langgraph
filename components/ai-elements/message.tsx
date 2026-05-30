@@ -330,6 +330,11 @@ export const MessageResponse = memo(
         className
       )}
       plugins={streamdownPlugins}
+      animated={{
+        animation: "fadeIn",
+        duration: 1000,
+        sep: "char",
+      }}
       {...props}
     />
   ),
