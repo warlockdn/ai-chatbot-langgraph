@@ -2,8 +2,10 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
-import { cn, sanitizeText } from "@/lib/utils";
-import { MessageContent, MessageResponse } from "../ai-elements/message";
+import { cn } from "@/lib/utils";
+import { MessageContent } from "../ai-elements/message";
+import { getCitationSourcesFromMessage } from "@/lib/citations";
+import { MessageWithCitations } from "./message-with-citations";
 import { Shimmer } from "../ai-elements/shimmer";
 import {
   Tool,
@@ -62,6 +64,9 @@ const PurePreviewMessage = ({
       part.type.startsWith("tool-")
   );
   const isThinking = isAssistant && isLoading && !hasAnyContent;
+  const citationSources = isAssistant
+    ? getCitationSourcesFromMessage(message)
+    : {};
 
   const attachments = attachmentsFromMessage.length > 0 && (
     <div
@@ -113,6 +118,10 @@ const PurePreviewMessage = ({
       return null;
     }
 
+    if (type === "source-url" || type === "source-document") {
+      return null;
+    }
+
     if (type === "text") {
       return (
         <MessageContent
@@ -123,7 +132,10 @@ const PurePreviewMessage = ({
           data-testid="message-content"
           key={key}
         >
-          <MessageResponse>{sanitizeText(part.text)}</MessageResponse>
+          <MessageWithCitations
+            sources={isAssistant ? citationSources : {}}
+            text={part.text}
+          />
         </MessageContent>
       );
     }
@@ -318,6 +330,8 @@ const PurePreviewMessage = ({
         </Tool>
       );
     }
+
+    return null;
   });
 
   const actions = !isReadonly && (
