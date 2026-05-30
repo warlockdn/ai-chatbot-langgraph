@@ -51,6 +51,8 @@ type ActiveChatContextValue = {
 
 const ActiveChatContext = createContext<ActiveChatContextValue | null>(null);
 
+const langgraphApi = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/langgraph`;
+
 function extractChatId(pathname: string): string | null {
   const match = pathname.match(/\/chat\/([^/]+)/);
   return match ? match[1] : null;
@@ -96,6 +98,49 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const visibility: VisibilityType = isNewChat
     ? "private"
     : (chatData?.visibility ?? "private");
+  const visibilityRef = useRef(visibility);
+  useEffect(() => {
+    visibilityRef.current = visibility;
+  }, [visibility]);
+
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: langgraphApi,
+        fetch: fetchWithErrorHandlers,
+        prepareSendMessagesRequest(request) {
+          const lastMessage = request.messages.at(-1);
+          const isToolApprovalContinuation =
+            lastMessage?.role !== "user" ||
+            request.messages.some((msg) =>
+              msg.parts?.some((part) => {
+                const state = (part as { state?: string }).state;
+                return (
+                  state === "approval-responded" || state === "output-denied"
+                );
+              })
+            );
+
+          return {
+            body: {
+              id: request.id,
+              ...(isToolApprovalContinuation
+                ? { messages: request.messages }
+                : { message: lastMessage }),
+              selectedChatModel: currentModelIdRef.current,
+              selectedVisibilityType: visibilityRef.current,
+              ...request.body,
+            },
+          };
+        },
+        prepareReconnectToStreamRequest({ id }) {
+          return {
+            api: `${langgraphApi}/${id}/stream`,
+          };
+        },
+      }),
+    []
+  );
 
   const {
     messages,
@@ -122,40 +167,15 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
         ) ?? false
       );
     },
-    transport: new DefaultChatTransport({
-      api: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/chat`,
-      fetch: fetchWithErrorHandlers,
-      prepareSendMessagesRequest(request) {
-        const lastMessage = request.messages.at(-1);
-        const isToolApprovalContinuation =
-          lastMessage?.role !== "user" ||
-          request.messages.some((msg) =>
-            msg.parts?.some((part) => {
-              const state = (part as { state?: string }).state;
-              return (
-                state === "approval-responded" || state === "output-denied"
-              );
-            })
-          );
-
-        return {
-          body: {
-            id: request.id,
-            ...(isToolApprovalContinuation
-              ? { messages: request.messages }
-              : { message: lastMessage }),
-            selectedChatModel: currentModelIdRef.current,
-            selectedVisibilityType: visibility,
-            ...request.body,
-          },
-        };
-      },
-    }),
+    transport,
     onData: (dataPart) => {
       setDataStream((ds) => (ds ? [...ds, dataPart] : []));
     },
     onFinish: () => {
       mutate(unstable_serialize(getChatHistoryPaginationKey));
+      mutate(
+        `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/messages?chatId=${chatId}`
+      );
     },
     onError: (error) => {
       if (error.message?.includes("AI Gateway requires a valid credit card")) {
@@ -171,20 +191,35 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  const loadedChatIds = useRef(new Set<string>());
-
-  if (isNewChat && !loadedChatIds.current.has(newChatIdRef.current)) {
-    loadedChatIds.current.add(newChatIdRef.current);
-  }
+  const hydratedChatIds = useRef(new Set<string>());
+  const prevHydrationChatIdRef = useRef(chatId);
 
   useEffect(() => {
-    if (loadedChatIds.current.has(chatId)) {
+    if (prevHydrationChatIdRef.current !== chatId) {
+      hydratedChatIds.current.delete(prevHydrationChatIdRef.current);
+      prevHydrationChatIdRef.current = chatId;
+    }
+  }, [chatId]);
+
+  useEffect(() => {
+    if (hydratedChatIds.current.has(chatId)) {
       return;
     }
-    if (chatData?.messages) {
-      loadedChatIds.current.add(chatId);
-      setMessages(chatData.messages);
+    if (!chatData?.messages) {
+      return;
     }
+
+    setMessages((current) => {
+      hydratedChatIds.current.add(chatId);
+
+      // SWR can return [] if it fetched before the chat was created; never
+      // replace an in-flight or completed local conversation with stale data.
+      if (current.length > 0) {
+        return current;
+      }
+
+      return chatData.messages;
+    });
   }, [chatId, chatData?.messages, setMessages]);
 
   const prevChatIdRef = useRef(chatId);
