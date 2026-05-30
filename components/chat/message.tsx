@@ -301,7 +301,23 @@ const PurePreviewMessage = ({
       );
     }
 
-    return null;
+    if (type === "tool-document_search") {
+      const { toolCallId, state, input } = part;
+      return (
+        <Tool defaultOpen={false} key={toolCallId}>
+          <ToolHeader state={state} type="tool-document_search" />
+          <ToolContent>
+            {input && "query" in input && <ToolInput input={input.query} />}
+            {input && "keywords" in input && (
+              <ToolInput input={input.keywords?.join(", ")} />
+            )}
+            {state === "output-available" && (
+              <ToolOutput errorText={undefined} output={part.output} />
+            )}
+          </ToolContent>
+        </Tool>
+      );
+    }
   });
 
   const actions = !isReadonly && (
