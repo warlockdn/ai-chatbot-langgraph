@@ -133,6 +133,7 @@ const PurePreviewMessage = ({
           key={key}
         >
           <MessageWithCitations
+            isStreamComplete={!isLoading}
             sources={isAssistant ? citationSources : {}}
             text={part.text}
           />

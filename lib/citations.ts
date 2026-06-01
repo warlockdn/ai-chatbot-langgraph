@@ -9,8 +9,6 @@ export type CitationSource = {
 
 export const CITATION_PLACEHOLDER_URL = "#";
 
-const CITATION_MARKER_PATTERN = /(\[\d+\])/g;
-
 const METADATA_TITLE_KEYS = ["title", "document_title", "name"] as const;
 const METADATA_URL_KEYS = ["url", "source", "link"] as const;
 const METADATA_DESCRIPTION_KEYS = [
@@ -157,11 +155,11 @@ export function messageHasCitationMarkers(text: string): boolean {
   return /\[\d+\]/.test(text);
 }
 
-export type CitationSegment =
-  | { type: "text"; value: string }
-  | { type: "citations"; ids: string[] };
-
-const CITATION_GROUP_PATTERN = /(?:\s*\[\d+\])+/g;
+export function parseCitationMarkerGroup(segment: string): string[] {
+  return [...segment.matchAll(/\[(\d+)\]/g)]
+    .map((match) => match[1])
+    .filter((id): id is string => Boolean(id));
+}
 
 export function resolveCitationSource(
   sources: Record<string, CitationSource>,
@@ -226,79 +224,8 @@ export function resolveCitationSources(
     );
 }
 
-export function embedCitationLinks(text: string): string {
-  const parts: string[] = [];
-  let lastIndex = 0;
-
-  for (const match of text.matchAll(CITATION_GROUP_PATTERN)) {
-    const start = match.index ?? 0;
-    const citedText = extractCitedText(text, start);
-    const before = text.slice(0, start);
-    const citedTextStart =
-      citedText && before.endsWith(citedText)
-        ? start - citedText.length
-        : start;
-
-    parts.push(text.slice(lastIndex, citedTextStart));
-
-    const ids = [...match[0].matchAll(/\[(\d+)\]/g)].map((item) => item[1]);
-    const textSuffix = citedText
-      ? `~${encodeURIComponent(citedText)}`
-      : "";
-
-    parts.push(`[](#citation-${ids.join("-")}${textSuffix})`);
-    lastIndex = start + match[0].length;
-  }
-
-  parts.push(text.slice(lastIndex));
-
-  return parts.join("");
-}
-
-function extractCitedText(text: string, citationStart: number): string {
-  const before = text.slice(0, citationStart).trimEnd();
-  const match = before.match(/(?:^|[.!?]\s+|\n+)([^\n]*?)$/);
-
-  return match?.[1]?.trim() ?? "";
-}
-
-export type ParsedCitationHref = {
-  citedText?: string;
-  ids: string[];
-};
-
-export function parseCitationHref(href: string): ParsedCitationHref | null {
-  if (!href.startsWith("#citation-")) {
-    return null;
-  }
-
-  const payload = href.slice("#citation-".length);
-  const separatorIndex = payload.indexOf("~");
-  const idPart =
-    separatorIndex === -1 ? payload : payload.slice(0, separatorIndex);
-  const citedTextEncoded =
-    separatorIndex === -1 ? undefined : payload.slice(separatorIndex + 1);
-  const ids = idPart.split("-").filter(Boolean);
-
-  if (ids.length === 0) {
-    return null;
-  }
-
-  let citedText: string | undefined;
-
-  if (citedTextEncoded) {
-    try {
-      citedText = decodeURIComponent(citedTextEncoded);
-    } catch {
-      citedText = citedTextEncoded;
-    }
-  }
-
-  return { ids, citedText };
-}
-
 export function splitTextWithCitationMarkers(text: string): string[] {
-  return text.split(CITATION_MARKER_PATTERN);
+  return text.split(/(\[\d+\])/g);
 }
 
 export function parseCitationMarker(segment: string): string | null {
